@@ -55,7 +55,7 @@ void print_ip_hdr(const struct ip_hdr* hdr) {
   std::printf("ip ver %u\n", hdr->ver);
   std::printf("ip hlen %u\n", hdr->hlen);
   std::printf("ip type of service 0x%x\n", hdr->tos);
-  std::printf("ip tlen %d=0x%x(0x%x)\n", MY_NTOHS(hdr->tlen), MY_NTOHS(hdr->tlen), hdr->tlen);
+  std::printf("ip tlen %u\n", MY_NTOHS(hdr->tlen));
   std::printf("ip id 0x%x(0x%x)\n", MY_NTOHS(hdr->id), hdr->id);
   std::printf("ip flags 0x%x\n", MY_NTOHS(hdr->flags));
   std::printf("ip ttl %u\n", hdr->ttl);
@@ -89,17 +89,25 @@ int print_pkt(pcap_t* handle) {
     const struct ip_hdr* ip_hdr = IP_HDR(pkt);
     if(ip_hdr->proto == 0x06) {
       const struct tcp_hdr* tcp_hdr = TCP_HDR(pkt);
+      #ifdef HTTP
       if(TCP_HDR_FLAGS(tcp_hdr) == 0x018 && (MY_NTOHS(tcp_hdr->dport) == 80 || MY_NTOHS(tcp_hdr->sport) == 80)) {
+      #endif
         print_eth_hdr(eth_hdr);
         print_ip_hdr(ip_hdr);
         print_tcp_hdr(tcp_hdr);
         uint16_t payload_len = TCP_PAYLOAD_LEN(pkt);
         std::cout << "tcp payload len " << payload_len << std::endl;
         std::cout << std::endl << "----------------------------------" << std::endl;;
+        #ifndef HTTP
+          if(payload_len > 10)
+            payload_len = 10;
+        #endif
         for(uint16_t i = 0; i != payload_len; ++i)
           std::cout << *(TCP_PAYLOAD(pkt) + i);
         std::cout << std::endl << "----------------------------------" << std::endl;;
+      #ifdef HTTP
       }
+      #endif
     }
   }
   return res;
@@ -108,6 +116,11 @@ int print_pkt(pcap_t* handle) {
 int main(int argc, char** argv) {
   char errbuf[PCAP_ERRBUF_SIZE];
   if(argc < 2) {
+    #ifdef HTTP
+    std::cout << "pcap test (HTTP only: true)" << std::endl;
+    #else
+    std::cout << "pcap test (HTTP only: false)" << std::endl;
+    #endif
     std::cout << "Usage: " << argv[0] << " <dev>" << std::endl;
     std::cout << "Available Devices" << std::endl;
     pcap_if_t* alldevsp;
