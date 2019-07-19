@@ -1,0 +1,4 @@
+*.pro.user
+*.o
+.qmake.stash
+pcap_test
