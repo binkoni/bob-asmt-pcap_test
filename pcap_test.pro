@@ -1,9 +1,0 @@
-QT += quick
-TEMPLATE = app
-TARGET = pcap_test
-INCLUDEPATH += .
-DEFINES += QT_DEPRECATED_WARNINGS
-SOURCES += main.cpp
-LIBS += -l pcap
-RESOURCES += res.qrc
-#HEADERS +=

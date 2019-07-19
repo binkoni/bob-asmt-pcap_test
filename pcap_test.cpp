@@ -1,8 +1,6 @@
 #include <pcap.h>
-#include <QTextStream>
-#include <QGuiApplication>
-#include <QQmlApplicationEngine>
 #include <cstring>
+#include <iostream>
 
 #define MY_NTOHS(n) ((uint16_t)((n & 0x00ff) << 8 | (n & 0xff00) >> 8))
 #define MY_NTOHL(n) ((uint16_t)((n & 0x000000ff) << 24 | (n & 0x0000ff00) << 8 | (n & 0x00ff0000) >> 8 | (n & 0xff000000) >> 24))
@@ -80,68 +78,57 @@ void print_tcp_hdr(const struct tcp_hdr* hdr) {
   std::printf("tcp urg_ptr: 0x%x\n", hdr->urg_ptr);
 }
 
-int main(int argc, char** argv) {
-  /*
-  QGuiApplication app{argc, argv};
-  QQmlApplicationEngine engine;
-  const QUrl url{QStringLiteral("qrc:/main.qml")};
-  QObject::connect(&engine, &QQmlApplicationEngine::objectCreated,
-                   &app, [url](QObject *obj, const QUrl &objUrl) {
-    if(!obj && url == objUrl)
-      QCoreApplication::exit(-1);
-  }, Qt::QueuedConnection);
-
-  engine.load(url);
-
-  return app.exec();
-  */
-  char errbuf[PCAP_ERRBUF_SIZE];
-  if(argc >= 2)
-    QTextStream(stdout) << "Hello World! " << argv[1] << endl;
-
-  pcap_if_t* alldevsp;
-  pcap_findalldevs(&alldevsp, errbuf);
-  if(alldevsp != NULL) {
-    for(pcap_if_t* curdevp = alldevsp; curdevp->next != NULL; curdevp = curdevp->next) { QTextStream(stdout) << curdevp->name << endl;
+int print_pkt(pcap_t* handle) {
+  struct pcap_pkthdr* pkt_info;
+  const u_char* pkt;
+  int res = pcap_next_ex(handle, &pkt_info, &pkt);
+  if(res != 1)
+    return res;
+  const struct eth_hdr* eth_hdr = (struct eth_hdr*)pkt;
+  if(MY_NTOHS(eth_hdr->type) == 0x0800) {
+    const struct ip_hdr* ip_hdr = IP_HDR(pkt);
+    if(ip_hdr->proto == 0x06) {
+      const struct tcp_hdr* tcp_hdr = TCP_HDR(pkt);
+      if(TCP_HDR_FLAGS(tcp_hdr) == 0x018 && (MY_NTOHS(tcp_hdr->dport) == 80 || MY_NTOHS(tcp_hdr->sport) == 80)) {
+        print_eth_hdr(eth_hdr);
+        print_ip_hdr(ip_hdr);
+        print_tcp_hdr(tcp_hdr);
+        uint16_t payload_len = TCP_PAYLOAD_LEN(pkt);
+        std::cout << "tcp payload len " << payload_len << std::endl;
+        std::cout << std::endl << "----------------------------------" << std::endl;;
+        for(uint16_t i = 0; i != payload_len; ++i)
+          std::cout << *(TCP_PAYLOAD(pkt) + i);
+        std::cout << std::endl << "----------------------------------" << std::endl;;
+      }
     }
   }
-  
-  pcap_t* handle = pcap_open_live("docker0", BUFSIZ, 1, 1000, errbuf);
+  return res;
+}
+
+int main(int argc, char** argv) {
+  char errbuf[PCAP_ERRBUF_SIZE];
+  if(argc < 2) {
+    std::cout << "Usage: " << argv[0] << " <dev>" << std::endl;
+    std::cout << "Available Devices" << std::endl;
+    pcap_if_t* alldevsp;
+    pcap_findalldevs(&alldevsp, errbuf);
+    if(alldevsp != NULL) {
+      for(pcap_if_t* curdevp = alldevsp; curdevp->next != NULL; curdevp = curdevp->next)
+        std::cout << "  " << curdevp->name << std::endl;
+    }
+    std::exit(EXIT_FAILURE);
+  }
+  pcap_t* handle = pcap_open_live(argv[1], BUFSIZ, 1, 1000, errbuf);
   if(handle == NULL) {
-    QTextStream(stdout) << errbuf << endl;
+    std::cout << errbuf << std::endl;
     return -1;
   }
-
   while(true) {
-    struct pcap_pkthdr* pkt_info;
-    const u_char* pkt;
-    int res = pcap_next_ex(handle, &pkt_info, &pkt);
+    int res = print_pkt(handle);
     if(res == 0)
       continue;
     if(res == PCAP_ERROR || res == PCAP_ERROR_BREAK)
       break;
-    const struct eth_hdr* eth_hdr = (struct eth_hdr*)pkt;
-    if(MY_NTOHS(eth_hdr->type) == 0x0800) {
-      const struct ip_hdr* ip_hdr = IP_HDR(pkt);
-      if(ip_hdr->proto == 0x06) {
-        const struct tcp_hdr* tcp_hdr = TCP_HDR(pkt);
-        if(TCP_HDR_FLAGS(tcp_hdr) == 0x018 && (MY_NTOHS(tcp_hdr->dport) == 80 || MY_NTOHS(tcp_hdr->sport) == 80)) {
-          print_eth_hdr(eth_hdr);
-          print_ip_hdr(ip_hdr);
-          print_tcp_hdr(tcp_hdr);
-
-          uint16_t body_len = TCP_PAYLOAD_LEN(pkt);
-          for(uint16_t i = 0; i != body_len; ++i) {
-            std::printf("%c", *(TCP_PAYLOAD(pkt) + i));
-          }
-          std::printf("\n----------------------------------\n");
-        }
-      }
-    }
-    //std::printf("%08x\n", dmac);
-    //QTextStream(stdout) << pkt_info->caplen << endl;
-    //QTextStream(stdout) << std::strlen((char*)pkt) << endl;
-    //QTextStream(stdout) << pkt << endl;
   }
   pcap_close(handle);
 }
