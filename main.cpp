@@ -4,13 +4,8 @@
 #include <QQmlApplicationEngine>
 #include <cstring>
 
-uint16_t my_ntohs(uint16_t n) {
-  return (n & 0x00ff) << 8 | (n & 0xff00) >> 8;
-}
-
-uint32_t my_ntohl(uint32_t n) {
-  return (n & 0x000000ff) << 24 | (n & 0x0000ff00) << 8 | (n & 0x00ff0000) >> 8 | (n & 0xff000000) >> 24;
-}
+#define MY_NTOHS(n) ((uint16_t)((n & 0x00ff) << 8 | (n & 0xff00) >> 8))
+#define MY_NTOHL(n) ((uint16_t)((n & 0x000000ff) << 24 | (n & 0x0000ff00) << 8 | (n & 0x00ff0000) >> 8 | (n & 0xff000000) >> 24))
 
 struct eth_hdr {
   uint8_t dmac[6];
@@ -24,9 +19,7 @@ struct ip_hdr {
   uint8_t tos;
   uint16_t tlen;
   uint16_t id;
-
   uint16_t flags;
-
   uint8_t ttl;
   uint8_t proto;
   uint16_t chksum;
@@ -48,36 +41,36 @@ struct tcp_hdr {
 } __attribute__((packed));
 
 #define IP_HDR_START(pkt) (struct ip_hdr*)((unsigned char*)pkt + sizeof(struct eth_hdr))
-#define TCP_HDR_HLEN(hdr) my_ntohs((my_ntohs((hdr)->hlen_with_flags) & 0b1111000000000000) >> 4)
-#define TCP_HDR_FLAGS(hdr) (my_ntohs((hdr)->hlen_with_flags) & 0b0000111111111111)
+#define TCP_HDR_HLEN(hdr) MY_NTOHS((MY_NTOHS((hdr)->hlen_with_flags) & 0b1111000000000000) >> 4)
+#define TCP_HDR_FLAGS(hdr) (MY_NTOHS((hdr)->hlen_with_flags) & 0b0000111111111111)
 #define TCP_HDR_START(pkt) (struct tcp_hdr*)((unsigned char*)IP_HDR_START(pkt) + ip_hdr->hlen * 4)
 #define TCP_HDR_END(pkt) (char*)((unsigned char*)TCP_HDR_START(pkt) + TCP_HDR_HLEN(TCP_HDR_START(pkt)) * 4)
 
 void print_eth_hdr(const struct eth_hdr* hdr) {
   std::printf("eth dmac %02x:%02x:%02x:%02x:%02x:%02x\n", hdr->dmac[0], hdr->dmac[1], hdr->dmac[2], hdr->dmac[3], hdr->dmac[4], hdr->dmac[5]);
   std::printf("eth smac %02x:%02x:%02x:%02x:%02x:%02x\n", hdr->smac[0], hdr->smac[1], hdr->smac[2], hdr->smac[3], hdr->smac[4], hdr->smac[5]);
-  std::printf("eth type 0x%04x\n", my_ntohs(hdr->type));
+  std::printf("eth type 0x%04x\n", MY_NTOHS(hdr->type));
 }
 
 void print_ip_hdr(const struct ip_hdr* hdr) {
   std::printf("ip ver %u\n", hdr->ver);
   std::printf("ip hlen %u\n", hdr->hlen);
   std::printf("ip type of service 0x%x\n", hdr->tos);
-  std::printf("ip tlen %d=0x%x(0x%x)\n", my_ntohs(hdr->tlen), my_ntohs(hdr->tlen), hdr->tlen);
-  std::printf("ip id 0x%x(0x%x)\n", my_ntohs(hdr->id), hdr->id);
-  std::printf("ip flags 0x%x\n", my_ntohs(hdr->flags));
+  std::printf("ip tlen %d=0x%x(0x%x)\n", MY_NTOHS(hdr->tlen), MY_NTOHS(hdr->tlen), hdr->tlen);
+  std::printf("ip id 0x%x(0x%x)\n", MY_NTOHS(hdr->id), hdr->id);
+  std::printf("ip flags 0x%x\n", MY_NTOHS(hdr->flags));
   std::printf("ip ttl %u\n", hdr->ttl);
   std::printf("ip proto 0x%x\n", hdr->proto);
-  std::printf("ip chksum 0x%x\n", my_ntohs(hdr->chksum));
+  std::printf("ip chksum 0x%x\n", MY_NTOHS(hdr->chksum));
   std::printf("ip src %d.%d.%d.%d\n", hdr->sip[0], hdr->sip[1], hdr->sip[2], hdr->sip[3]);
   std::printf("ip dst %d.%d.%d.%d\n", hdr->dip[0], hdr->dip[1], hdr->dip[2], hdr->dip[3]);
 }
 
 void print_tcp_hdr(const struct tcp_hdr* hdr) {
-  std::printf("tcp sport: %u\n", my_ntohs(hdr->sport));
-  std::printf("tcp dport: %u\n", my_ntohs(hdr->dport));
-  std::printf("tcp seq: %x\n", my_ntohl(hdr->seq_num));
-  std::printf("tcp ack: %x\n", my_ntohl(hdr->ack_num));
+  std::printf("tcp sport: %u\n", MY_NTOHS(hdr->sport));
+  std::printf("tcp dport: %u\n", MY_NTOHS(hdr->dport));
+  std::printf("tcp seq: %x\n", MY_NTOHL(hdr->seq_num));
+  std::printf("tcp ack: %x\n", MY_NTOHL(hdr->ack_num));
   std::printf("tcp hlen_with_flags 0x%x\n", hdr->hlen_with_flags);
   std::printf("tcp hlen: 0x%x\n", TCP_HDR_HLEN(hdr));
   std::printf("tcp flags: 0x%x\n", TCP_HDR_FLAGS(hdr));
@@ -127,17 +120,17 @@ int main(int argc, char** argv) {
     if(res == PCAP_ERROR || res == PCAP_ERROR_BREAK)
       break;
     const struct eth_hdr* eth_hdr = (struct eth_hdr*)pkt_data;
-    if(my_ntohs(eth_hdr->type) == 0x0800) {
+    if(MY_NTOHS(eth_hdr->type) == 0x0800) {
       const struct ip_hdr* ip_hdr = IP_HDR_START(pkt_data);
       if(ip_hdr->proto == 0x06) {
         const struct tcp_hdr* tcp_hdr = TCP_HDR_START(pkt_data);
-        if(TCP_HDR_FLAGS(tcp_hdr) == 0x018 && (my_ntohs(tcp_hdr->dport) == 80 || my_ntohs(tcp_hdr->sport) == 80)) {
+        if(TCP_HDR_FLAGS(tcp_hdr) == 0x018 && (MY_NTOHS(tcp_hdr->dport) == 80 || MY_NTOHS(tcp_hdr->sport) == 80)) {
           print_eth_hdr(eth_hdr);
           print_ip_hdr(ip_hdr);
           print_tcp_hdr(tcp_hdr);
 
-          uint16_t body_len = my_ntohs(ip_hdr->tlen) - (ip_hdr->hlen + TCP_HDR_HLEN(tcp_hdr)) * 4;
-          std::printf("body len: %d = ip tlen %d - (ip hlen %d + tcp hlen 0x%x(%d)) * 4\n", body_len, my_ntohs(ip_hdr->tlen), ip_hdr->hlen, TCP_HDR_HLEN(tcp_hdr), TCP_HDR_HLEN(tcp_hdr));
+          uint16_t body_len = MY_NTOHS(ip_hdr->tlen) - (ip_hdr->hlen + TCP_HDR_HLEN(tcp_hdr)) * 4;
+          std::printf("body len: %d = ip tlen %d - (ip hlen %d + tcp hlen 0x%x(%d)) * 4\n", body_len, MY_NTOHS(ip_hdr->tlen), ip_hdr->hlen, TCP_HDR_HLEN(tcp_hdr), TCP_HDR_HLEN(tcp_hdr));
       
           for(uint16_t i = 0; i != body_len; ++i) {
             std::printf("%c", *(TCP_HDR_END(pkt_data) + i));
