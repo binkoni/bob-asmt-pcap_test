@@ -40,11 +40,12 @@ struct tcp_hdr {
   uint8_t options[8];
 } __attribute__((packed));
 
-#define IP_HDR_START(pkt) (struct ip_hdr*)((unsigned char*)pkt + sizeof(struct eth_hdr))
-#define TCP_HDR_HLEN(hdr) MY_NTOHS((MY_NTOHS((hdr)->hlen_with_flags) & 0b1111000000000000) >> 4)
+#define IP_HDR(pkt) ((struct ip_hdr*)((unsigned char*)pkt + sizeof(struct eth_hdr)))
+#define TCP_HDR_HLEN(hdr) ((MY_NTOHS((hdr)->hlen_with_flags) & 0b1111000000000000) >> 4)
 #define TCP_HDR_FLAGS(hdr) (MY_NTOHS((hdr)->hlen_with_flags) & 0b0000111111111111)
-#define TCP_HDR_START(pkt) (struct tcp_hdr*)((unsigned char*)IP_HDR_START(pkt) + ip_hdr->hlen * 4)
-#define TCP_HDR_END(pkt) (char*)((unsigned char*)TCP_HDR_START(pkt) + TCP_HDR_HLEN(TCP_HDR_START(pkt)) * 4)
+#define TCP_HDR(pkt) ((struct tcp_hdr*)((unsigned char*)IP_HDR(pkt) + ip_hdr->hlen * 4))
+#define TCP_PAYLOAD(pkt) ((char*)((unsigned char*)TCP_HDR(pkt) + TCP_HDR_HLEN(TCP_HDR(pkt)) * 4))
+#define TCP_PAYLOAD_LEN(pkt) (MY_NTOHS(IP_HDR(pkt)->tlen) - (IP_HDR(pkt)->hlen + MY_NTOHS(TCP_HDR_HLEN(TCP_HDR(pkt)))) * 4)
 
 void print_eth_hdr(const struct eth_hdr* hdr) {
   std::printf("eth dmac %02x:%02x:%02x:%02x:%02x:%02x\n", hdr->dmac[0], hdr->dmac[1], hdr->dmac[2], hdr->dmac[3], hdr->dmac[4], hdr->dmac[5]);
@@ -72,7 +73,7 @@ void print_tcp_hdr(const struct tcp_hdr* hdr) {
   std::printf("tcp seq: %x\n", MY_NTOHL(hdr->seq_num));
   std::printf("tcp ack: %x\n", MY_NTOHL(hdr->ack_num));
   std::printf("tcp hlen_with_flags 0x%x\n", hdr->hlen_with_flags);
-  std::printf("tcp hlen: 0x%x\n", TCP_HDR_HLEN(hdr));
+  std::printf("tcp hlen: 0x%x\n", MY_NTOHS(TCP_HDR_HLEN(hdr)));
   std::printf("tcp flags: 0x%x\n", TCP_HDR_FLAGS(hdr));
   std::printf("tcp wsize: 0x%x\n", hdr->wsize);
   std::printf("tcp chksum: 0x%x\n", hdr->chksum);
@@ -112,37 +113,38 @@ int main(int argc, char** argv) {
   }
 
   while(true) {
-    struct pcap_pkthdr* pkt_header;
-    const u_char* pkt_data;
-    int res = pcap_next_ex(handle, &pkt_header, &pkt_data);
+    struct pcap_pkthdr* pkt_info;
+    const u_char* pkt;
+    int res = pcap_next_ex(handle, &pkt_info, &pkt);
     if(res == 0)
       continue;
     if(res == PCAP_ERROR || res == PCAP_ERROR_BREAK)
       break;
-    const struct eth_hdr* eth_hdr = (struct eth_hdr*)pkt_data;
+    const struct eth_hdr* eth_hdr = (struct eth_hdr*)pkt;
     if(MY_NTOHS(eth_hdr->type) == 0x0800) {
-      const struct ip_hdr* ip_hdr = IP_HDR_START(pkt_data);
+      const struct ip_hdr* ip_hdr = IP_HDR(pkt);
       if(ip_hdr->proto == 0x06) {
-        const struct tcp_hdr* tcp_hdr = TCP_HDR_START(pkt_data);
+        const struct tcp_hdr* tcp_hdr = TCP_HDR(pkt);
         if(TCP_HDR_FLAGS(tcp_hdr) == 0x018 && (MY_NTOHS(tcp_hdr->dport) == 80 || MY_NTOHS(tcp_hdr->sport) == 80)) {
           print_eth_hdr(eth_hdr);
           print_ip_hdr(ip_hdr);
           print_tcp_hdr(tcp_hdr);
 
-          uint16_t body_len = MY_NTOHS(ip_hdr->tlen) - (ip_hdr->hlen + TCP_HDR_HLEN(tcp_hdr)) * 4;
-          std::printf("body len: %d = ip tlen %d - (ip hlen %d + tcp hlen 0x%x(%d)) * 4\n", body_len, MY_NTOHS(ip_hdr->tlen), ip_hdr->hlen, TCP_HDR_HLEN(tcp_hdr), TCP_HDR_HLEN(tcp_hdr));
+          uint16_t body_len = TCP_PAYLOAD_LEN(pkt);
+          //std::printf("body len: %d = ip tlen %d - (ip hlen %d + tcp hlen %d) * 4\n", body_len, MY_NTOHS(ip_hdr->tlen), ip_hdr->hlen, MY_NTOHS(TCP_HDR_HLEN(tcp_hdr)));
       
           for(uint16_t i = 0; i != body_len; ++i) {
-            std::printf("%c", *(TCP_HDR_END(pkt_data) + i));
+            //std::printf("%c", *((char*)((unsigned char*)TCP_HDR(pkt) + TCP_HDR_HLEN(TCP_HDR(pkt)) * 4)));
+            std::printf("%c", *(TCP_PAYLOAD(pkt) + i));
           }
           std::printf("\n----------------------------------\n");
         }
       }
     }
     //std::printf("%08x\n", dmac);
-    //QTextStream(stdout) << pkt_header->caplen << endl;
-    //QTextStream(stdout) << std::strlen((char*)pkt_data) << endl;
-    //QTextStream(stdout) << pkt_data << endl;
+    //QTextStream(stdout) << pkt_info->caplen << endl;
+    //QTextStream(stdout) << std::strlen((char*)pkt) << endl;
+    //QTextStream(stdout) << pkt << endl;
   }
   pcap_close(handle);
 }
