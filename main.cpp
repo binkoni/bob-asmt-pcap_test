@@ -44,7 +44,7 @@ struct tcp_hdr {
 #define TCP_HDR_HLEN(hdr) ((MY_NTOHS((hdr)->hlen_with_flags) & 0b1111000000000000) >> 4)
 #define TCP_HDR_FLAGS(hdr) (MY_NTOHS((hdr)->hlen_with_flags) & 0b0000111111111111)
 #define TCP_HDR(pkt) ((struct tcp_hdr*)((unsigned char*)IP_HDR(pkt) + ip_hdr->hlen * 4))
-#define TCP_PAYLOAD(pkt) ((char*)((unsigned char*)TCP_HDR(pkt) + TCP_HDR_HLEN(TCP_HDR(pkt)) * 4))
+#define TCP_PAYLOAD(pkt) ((char*)((unsigned char*)TCP_HDR(pkt) + MY_NTOHS(TCP_HDR_HLEN(TCP_HDR(pkt))) * 4))
 #define TCP_PAYLOAD_LEN(pkt) (MY_NTOHS(IP_HDR(pkt)->tlen) - (IP_HDR(pkt)->hlen + MY_NTOHS(TCP_HDR_HLEN(TCP_HDR(pkt)))) * 4)
 
 void print_eth_hdr(const struct eth_hdr* hdr) {
@@ -131,10 +131,7 @@ int main(int argc, char** argv) {
           print_tcp_hdr(tcp_hdr);
 
           uint16_t body_len = TCP_PAYLOAD_LEN(pkt);
-          //std::printf("body len: %d = ip tlen %d - (ip hlen %d + tcp hlen %d) * 4\n", body_len, MY_NTOHS(ip_hdr->tlen), ip_hdr->hlen, MY_NTOHS(TCP_HDR_HLEN(tcp_hdr)));
-      
           for(uint16_t i = 0; i != body_len; ++i) {
-            //std::printf("%c", *((char*)((unsigned char*)TCP_HDR(pkt) + TCP_HDR_HLEN(TCP_HDR(pkt)) * 4)));
             std::printf("%c", *(TCP_PAYLOAD(pkt) + i));
           }
           std::printf("\n----------------------------------\n");
